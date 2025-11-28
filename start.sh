@@ -42,15 +42,6 @@ fi
 echo "✅ Environment variables loaded"
 echo ""
 
-# Start backend in background
-echo "🔄 Starting FastAPI backend..."
-uvicorn app:app --reload --port 8000 &
-BACKEND_PID=$!
-
-# Wait for backend to start
-echo "⏳ Waiting for backend to start..."
-sleep 3
-
 # Start frontend
 echo "🎨 Starting Streamlit frontend..."
 echo ""
@@ -58,13 +49,7 @@ echo "================================"
 echo "✅ Application is starting!"
 echo "================================"
 echo "Frontend: http://localhost:8501"
-echo "Backend: http://localhost:8000/docs"
 echo "================================"
 echo ""
 
 streamlit run frontend.py
-
-# Cleanup on exit
-echo ""
-echo "🛑 Shutting down..."
-kill $BACKEND_PID
