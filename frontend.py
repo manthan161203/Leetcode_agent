@@ -206,7 +206,7 @@ def main():
                 st.rerun()
         else:
             st.warning("❌ GitHub Not Connected")
-            with st.form("github_config"):
+            with st.form("github_config_form"):
                 token = st.text_input("GitHub Token", type="password")
                 username = st.text_input("GitHub Username")
                 repo = st.text_input("Repository Name", value="leetcode-solutions")
