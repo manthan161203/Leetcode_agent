@@ -7,7 +7,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from models import GithubConfig, LeetcodeSolution, ProblemDetails, Explanation
 from utils import get_file_extension, get_folder_and_filename, create_solution_file, create_notes
 from langchain_core.output_parsers import StrOutputParser
-from llm import problem_prompt, problem_parser, explanation_prompt, explanation_parser, translation_prompt, chat_prompt
+from prompts import problem_prompt, problem_parser, explanation_prompt, explanation_parser, translation_prompt, chat_prompt
 
 # Page Configuration
 st.set_page_config(
