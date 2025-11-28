@@ -9,15 +9,18 @@ from models import ProblemDetails, Explanation
 load_dotenv()
 
 # LLM SETUP (Gemini 2.5)
-if not os.getenv("GOOGLE_API_KEY"):
-    raise RuntimeError("GOOGLE_API_KEY environment variable not set.")
+google_api_key = os.getenv("GOOGLE_API_KEY")
 
+if google_api_key:
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash-lite",
+        temperature=0.2,
+        max_tokens=4000,
+        google_api_key=google_api_key
+    )
+else:
+    llm = None
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-lite",
-    temperature=0.2,
-    max_tokens=4000
-)
 
 # PROMPT TEMPLATES + PARSERS
 problem_parser = PydanticOutputParser(pydantic_object=ProblemDetails)

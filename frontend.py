@@ -2,9 +2,13 @@ import streamlit as st
 import requests
 import base64
 import logging
+import os
+from langchain_google_genai import ChatGoogleGenerativeAI
 from models import GithubConfig, LeetcodeSolution, ProblemDetails, Explanation
 from utils import get_file_extension, get_folder_and_filename, create_solution_file, create_notes
-from llm import llm, problem_prompt, problem_parser, explanation_prompt, explanation_parser
+from llm import problem_prompt, problem_parser, explanation_prompt, explanation_parser
+# Note: We don't import 'llm' directly to avoid using the None object if key is missing. 
+# We'll check os.environ or session state.
 
 # Page Configuration
 st.set_page_config(
@@ -20,6 +24,8 @@ logger = logging.getLogger(__name__)
 # Session state initialization
 if 'github_config' not in st.session_state:
     st.session_state.github_config = {}
+if 'google_api_key' not in st.session_state:
+    st.session_state.google_api_key = os.getenv("GOOGLE_API_KEY")
 
 # Helper Functions
 def configure_github(token, username, repo):
@@ -41,9 +47,24 @@ def configure_github(token, username, repo):
     except Exception as e:
         return False, str(e)
 
+def get_llm():
+    api_key = st.session_state.google_api_key
+    if not api_key:
+        return None
+    return ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash-lite",
+        temperature=0.2,
+        max_tokens=4000,
+        google_api_key=api_key
+    )
+
 def save_solution_logic(problem_statement, code, language, problem_name=None):
     if not st.session_state.github_config:
         return False, "GitHub not configured"
+    
+    llm_instance = get_llm()
+    if not llm_instance:
+        return False, "Google API Key not configured"
 
     config = st.session_state.github_config
     headers = {
@@ -53,12 +74,12 @@ def save_solution_logic(problem_statement, code, language, problem_name=None):
 
     try:
         # 1. Extract Problem Details
-        problem = problem_prompt | llm | problem_parser
-        problem_details = problem.invoke({"problem_statement": problem_statement})
+        problem_chain = problem_prompt | llm_instance | problem_parser
+        problem_details = problem_chain.invoke({"problem_statement": problem_statement})
         
         # 2. Generate Explanation
-        explain = explanation_prompt | llm | explanation_parser
-        explanation = explain.invoke({
+        explain_chain = explanation_prompt | llm_instance | explanation_parser
+        explanation = explain_chain.invoke({
             "problem_statement": problem_statement,
             "code": code,
             "language": language
@@ -87,31 +108,27 @@ def save_solution_logic(problem_statement, code, language, problem_name=None):
                 "branch": "main"
             }
         )
-        if r.status_code in (200, 201, 422): # 422 might mean file exists, we might want to handle updates differently or just ignore for now if it's a simple put
-             # Actually 422 usually means validation error. 
-             # For updating existing file, we need 'sha'. For simplicity, let's assume new file or handle error.
-             # If file exists, we need to get sha first. Let's keep it simple and assume it works or fails.
-             # If it fails due to existing file, we'd need to fetch sha. 
-             # Let's try to get sha if it fails? Or just let it fail for now to keep it simple as requested.
-             if r.status_code not in (200, 201):
-                 # Try to get sha to update
-                 get_r = requests.get(
-                     f"https://api.github.com/repos/{config['github_username']}/{config['github_repo']}/contents/{code_path}",
-                     headers=headers
-                 )
-                 if get_r.status_code == 200:
-                     sha = get_r.json().get('sha')
-                     # Retry with sha
-                     r = requests.put(
-                        f"https://api.github.com/repos/{config['github_username']}/{config['github_repo']}/contents/{code_path}",
-                        headers=headers,
-                        json={
-                            "message": f"Update solution: {problem_details.problem_name} ({language})",
-                            "content": base64.b64encode(code_file.encode()).decode(),
-                            "branch": "main",
-                            "sha": sha
-                        }
-                    )
+        
+        # Handle updates if file exists (simple retry with sha if needed, or just ignore error for now)
+        if r.status_code not in (200, 201):
+             # Try to get sha to update
+             get_r = requests.get(
+                 f"https://api.github.com/repos/{config['github_username']}/{config['github_repo']}/contents/{code_path}",
+                 headers=headers
+             )
+             if get_r.status_code == 200:
+                 sha = get_r.json().get('sha')
+                 # Retry with sha
+                 r = requests.put(
+                    f"https://api.github.com/repos/{config['github_username']}/{config['github_repo']}/contents/{code_path}",
+                    headers=headers,
+                    json={
+                        "message": f"Update solution: {problem_details.problem_name} ({language})",
+                        "content": base64.b64encode(code_file.encode()).decode(),
+                        "branch": "main",
+                        "sha": sha
+                    }
+                )
         
         if r.status_code in (200, 201):
             files_pushed.append(code_path)
@@ -161,17 +178,34 @@ def main():
     st.title("🚀 LeetCode GitHub Agent")
     st.markdown("Generate notes and push solutions to GitHub automatically.")
 
-    # Sidebar: GitHub Configuration
+    # Sidebar: Configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
         
+        # Google API Key Config
+        if not st.session_state.google_api_key:
+            st.warning("🔑 Google API Key missing")
+            api_key_input = st.text_input("Enter Google API Key", type="password")
+            if api_key_input:
+                st.session_state.google_api_key = api_key_input
+                st.success("API Key saved!")
+                st.rerun()
+        else:
+            st.success("✅ Google API Key Configured")
+            if st.button("Change API Key"):
+                st.session_state.google_api_key = None
+                st.rerun()
+        
+        st.divider()
+
+        # GitHub Config
         if st.session_state.github_config:
-            st.success(f"Connected as {st.session_state.github_config.get('github_username')}")
-            if st.button("Reconfigure"):
+            st.success(f"✅ Connected to GitHub as {st.session_state.github_config.get('github_username')}")
+            if st.button("Disconnect GitHub"):
                 st.session_state.github_config = {}
                 st.rerun()
         else:
-            st.warning("Not Connected")
+            st.warning("❌ GitHub Not Connected")
             with st.form("github_config"):
                 token = st.text_input("GitHub Token", type="password")
                 username = st.text_input("GitHub Username")
@@ -186,6 +220,10 @@ def main():
                             st.error(msg)
                     else:
                         st.error("Please fill all fields")
+
+    if not st.session_state.google_api_key:
+        st.info("👈 Please enter your Google API Key in the sidebar to continue.")
+        st.stop()
 
     if not st.session_state.github_config:
         st.info("👈 Please configure GitHub in the sidebar to start.")
