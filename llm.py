@@ -15,7 +15,7 @@ if google_api_key:
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash-lite",
         temperature=0.2,
-        max_tokens=4000,
+        max_tokens=8192,
         google_api_key=google_api_key
     )
 else:
@@ -153,4 +153,34 @@ explanation_prompt = PromptTemplate(
     ),
     input_variables=["problem_statement", "code", "language"],
     partial_variables={"format_instructions": explanation_parser.get_format_instructions()}
+)
+
+translation_prompt = PromptTemplate(
+    template=(
+        "You are an expert polyglot programmer.\n"
+        "Translate the following {source_language} code to {target_language}.\n\n"
+        "Original Code:\n"
+        "```\n{code}\n```\n\n"
+        "Requirements:\n"
+        "1. Maintain the exact same logic and algorithm.\n"
+        "2. Use idiomatic syntax for {target_language}.\n"
+        "3. Keep variable names similar unless they violate {target_language} naming conventions.\n"
+        "4. Include necessary imports/headers.\n"
+        "5. Output ONLY the code, no markdown backticks, no explanation.\n"
+    ),
+    input_variables=["source_language", "target_language", "code"]
+)
+
+chat_prompt = PromptTemplate(
+    template=(
+        "You are an expert coding tutor.\n"
+        "You are discussing a LeetCode problem solution with a student.\n\n"
+        "Problem Context:\n{problem_statement}\n\n"
+        "Current Solution ({language}):\n```\n{code}\n```\n\n"
+        "Student Question: {question}\n\n"
+        "Answer the student's question clearly and concisely.\n"
+        "If they ask about a specific part of the code, reference line numbers or code snippets.\n"
+        "Be encouraging and helpful."
+    ),
+    input_variables=["problem_statement", "language", "code", "question"]
 )
